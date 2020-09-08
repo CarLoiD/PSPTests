@@ -1,9 +1,9 @@
 #include <pspkernel.h>
-#include <pspdebug.h>
 #include <pspgu.h>
 #include <pspge.h>
 #include <pspgum.h>
 #include <pspdisplay.h>
+#include <pspctrl.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +26,8 @@ PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 static uint32_t g_staticOffset = 0;
 static int32_t g_exitRequest = 0;
 
+SceCtrlData g_padData;
+
 static uint32_t ALIGN(16) g_dspList[262144];
 
 typedef struct
@@ -38,7 +40,7 @@ const VertexInput ALIGN(16) vertices[] =
 {
     { 0xFF0000FF, { -0.50f ,-0.25f, 1.0f } },
     { 0xFF00FF00, {  0.00f , 0.25f, 1.0f } },
-    { 0xFFFF0000, {  0.50f ,-0.25f, 1.0f } }
+    { 0xFFFF0000, {  0.50f ,-0.25f, 1.0f } },
 }; const uint32_t nVertices = sizeof(vertices) / sizeof(VertexInput);
 
 // VRAM Alloc
@@ -48,8 +50,8 @@ void* GetStaticVramTexture(uint32_t width, uint32_t height, uint32_t psm);
 
 // Callbacks
 
-int32_t ExitCallback(int32_t arg1, int32_t arg2, void *common);
-int32_t CallbackThread(SceSize args, void *argp);
+int32_t ExitCallback(int32_t arg1, int32_t arg2, void* common);
+int32_t CallbackThread(SceSize args, void* argp);
 
 // MAIN
 
@@ -57,13 +59,16 @@ int main()
 {
     int32_t threadId = sceKernelCreateThread("update_thread", CallbackThread, 0x11, 0xFA0, 0, 0);
     assert(threadId >= 0);
-
+    
     sceKernelStartThread(threadId, 0, 0);
+    
+    sceCtrlSetSamplingCycle(0);
+    sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     
     void* pFrontBuffer = GetStaticVramBuffer(BUFFER_WIDTH, SCREEN_H, GU_PSM_8888);
     void* pBackBuffer  = GetStaticVramBuffer(BUFFER_WIDTH, SCREEN_H, GU_PSM_8888);
     void* pDepthBuffer = GetStaticVramBuffer(BUFFER_WIDTH, SCREEN_H, GU_PSM_4444);
-        
+    
     sceGuInit();
     sceGuStart(GU_DIRECT, g_dspList);
     
@@ -83,7 +88,7 @@ int main()
     
     // Culling
     
-    sceGuFrontFace(GU_CW);
+    sceGuFrontFace(GU_CCW);
     sceGuDisable(GU_CULL_FACE);
     
     // Misc
@@ -103,8 +108,16 @@ int main()
     sceDisplayWaitVblankStart();
     sceGuDisplay(GU_TRUE);
     
+    float angle = 0.0f; 
+    
     while (!g_exitRequest)
     {
+        sceCtrlReadBufferPositive(&g_padData, 1);
+        
+        if (!(g_padData.Buttons & PSP_CTRL_CROSS)) {
+            angle += 0.05f;
+        }
+        
         sceGuStart(GU_DIRECT, g_dspList);
         
         sceGuClearColor(0xFF2D2D2D);
@@ -120,13 +133,17 @@ int main()
         
         sceGumMatrixMode(GU_VIEW);
         sceGumLoadIdentity();
+        {
+            ScePspFVector3 eye = { 0.0f, 0.0f,-2.0f };
+            ScePspFVector3 at  = { 0.0f, 0.0f, 0.0f }; 
+            ScePspFVector3 up  = { 0.0f, 1.0f, 0.0f };
+            
+            sceGumLookAt(&eye, &at, &up);
+        }
         
         sceGumMatrixMode(GU_MODEL);
         sceGumLoadIdentity();
-        {
-            ScePspFVector3 pos = { 0.0f, 0.0f, -2.0f };
-            sceGumTranslate(&pos);
-        }
+        sceGumRotateY(angle);
         
         sceGumDrawArray(GU_TRIANGLES, VERTEX_FORMAT, nVertices, NULL, vertices);
         
@@ -145,13 +162,13 @@ int main()
 
 // Definitions
 
-int32_t ExitCallback(int32_t arg1, int32_t arg2, void *common)
+int32_t ExitCallback(int32_t arg1, int32_t arg2, void* common)
 {
     g_exitRequest = 1;
     return 0;
 }
 
-int32_t CallbackThread(SceSize args, void *argp)
+int32_t CallbackThread(SceSize args, void* argp)
 {
     int32_t exitCallbackId = sceKernelCreateCallback("Exit Callback", ExitCallback, NULL);
     
