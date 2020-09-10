@@ -10,11 +10,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
+#include <malloc.h>
 
-#include "CHIHUAHUA.h"
+#include "DATA_DIR/AXE/AXE.h"
 
 #define ALIGN(n) __attribute__((aligned(n)))
-
 #define VERTEX_FORMAT (GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D)
 
 #define SCREEN_W 480
@@ -38,20 +38,6 @@ typedef struct {
     float Position[3];
 } VertexInput;
 
-const VertexInput ALIGN(16) vertices[] =
-{
-    { { 0.0f, 1.0f }, 0x00FFFFFF, { -1.0f, -1.0f,  1.0f } },
-    { { 0.0f, 0.0f }, 0x00FFFFFF, { -1.0f,  1.0f,  1.0f } },
-    { { 1.0f, 1.0f }, 0x00FFFFFF, {  1.0f, -1.0f,  1.0f } },
-    { { 1.0f, 0.0f }, 0x00FFFFFF, {  1.0f,  1.0f,  1.0f } }
-};
-
-const uint16_t indices[] = 
-{
-    0,2,1,
-    1,2,3,
-}; const uint32_t nIndices = sizeof(indices) / sizeof(uint16_t);
-
 // VRAM Alloc
 
 void* GetStaticVramBuffer(uint32_t width, uint32_t height, uint32_t psm);
@@ -61,6 +47,10 @@ void* GetStaticVramTexture(uint32_t width, uint32_t height, uint32_t psm);
 
 int32_t ExitCallback(int32_t arg1, int32_t arg2, void* common);
 int32_t CallbackThread(SceSize args, void* argp);
+
+// Utils
+void TexRGBToBGR(uint8_t* pixelData, const uint32_t bufferSize);
+int32_t LoadOBJData(const char* path, VertexInput* buffer);
 
 // MAIN
 
@@ -134,6 +124,8 @@ int main()
     sceDisplayWaitVblankStart();
     sceGuDisplay(GU_TRUE);
     
+    TexRGBToBGR(AXE, sizeof(AXE));
+    
     float angle = 0.1f;
     
     while (!g_exitRequest)
@@ -167,7 +159,7 @@ int main()
         
         sceGuTexMode(GU_PSM_8888, 0, 0, 0);
 		sceGuTexFilter(GU_LINEAR, GU_LINEAR);
-        sceGuTexImage(0, 64, 64, 64, (uint32_t*)CHIHUAHUA);
+        sceGuTexImage(0, 512, 512, 512, AXE);
         
         sceGumDrawArray(GU_TRIANGLES, VERTEX_FORMAT, nIndices, indices, vertices);
         
@@ -241,4 +233,26 @@ void* GetStaticVramTexture(uint32_t width, uint32_t height, uint32_t psm)
 {
     void* result = GetStaticVramBuffer(width, height, psm);
     return (void*)(((uint32_t)result) + ((uint32_t)sceGeEdramGetAddr()));
+}
+
+void TexRGBToBGR(uint8_t* pixelData, const uint32_t bufferSize)
+{
+    uint32_t index = 0;
+    for (; index < bufferSize; index += 4) 
+    {
+        const uint8_t temp = pixelData[index];
+        pixelData[index]     = pixelData[index + 2];
+        pixelData[index + 2] = temp;
+    }
+}
+
+int32_t LoadOBJData(const char* path, VertexInput* buffer)
+{
+    FILE* inputStream = fopen(path, "rb");
+    
+    if (inputStream == NULL) {
+        return -1;
+    }
+    
+    fclose(inputStream);
 }
