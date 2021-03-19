@@ -1,2 +1,2 @@
-# PSP-Tests
-Training general PSP graphics unit and game programming techniques
+# PSPTests
+Training general Sony PlayStation Portable (PSP) graphics unit and game programming techniques
